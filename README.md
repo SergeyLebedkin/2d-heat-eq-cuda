@@ -4,9 +4,9 @@ A tiny **2D explicit heat-equation** demo (radius-4 / 8th-order Laplacian) on **
 
 It simulates:
 
-\[
-u_t = \kappa \nabla^2 u + s(x,y)\,g(t)
-\]
+\begin{equation}
+    \frac{\partial u}{\partial t} = \kappa \Delta u + s(x,y)g(t)
+\end{equation}
 
 with a short source injection at the center (or user-chosen point).
 
