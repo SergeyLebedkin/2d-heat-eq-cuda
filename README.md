@@ -4,9 +4,7 @@ A tiny **2D explicit heat-equation** demo (radius-4 / 8th-order Laplacian) on **
 
 It simulates:
 
-\[
-u_t = \kappa \nabla^2 u + s(x,y)\,g(t)
-\]
+$$ u_t = \kappa \nabla^2 u + s(x,y)\,g(t) $$
 
 with a short source injection at the center (or user-chosen point).
 
@@ -70,3 +68,8 @@ Precise per-step kernel timing (CUDA events, synchronizes each step):
 - Explicit diffusion stability depends on `dt`, `kappa`, and grid spacing. Start conservative.
 
 # 2d-heat-eq-cuda
+
+Use following command to profile 
+```
+./build/heat2d --nx 1200 --ny 1200 --dt 0.005 --steps 20000 --timing --timing-print-every 100
+```
