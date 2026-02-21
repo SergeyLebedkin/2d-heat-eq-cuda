@@ -1,8 +1,9 @@
 #include <cuda_runtime.h>
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 
 #include <algorithm>
+#include <vector>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -174,7 +175,7 @@ __device__ __forceinline__ float d2_8th(const float u0, const float um1,
                                         const float up2, const float um3,
                                         const float up3, const float um4,
                                         const float up4) {
-  // coefficients:
+                                            // coefficients:
   // c0 = -205/72
   // c1 =  8/5
   // c2 = -1/5
@@ -234,52 +235,56 @@ __global__ void step_kernel(float *__restrict__ u_next,
   u_next[idx] = un;
 }
 
-#define BLOCK_X 32
-#define BLOCK_Y 8
+#define RADIUS 4
+#define BLOCK_X 16
+#define BLOCK_Y 16
 
-#define BLOCK_HALO_X 32 + 4
-#define BLOCK_HALO_Y 8 + 4
+#define BLOCK_HALO_X (BLOCK_X + 2 * RADIUS + 1)
+#define BLOCK_HALO_Y (BLOCK_Y + 2 * RADIUS)
 __global__ void step_kernel_smem(float *__restrict__ u_next,
                                  const float *__restrict__ u, int nx, int ny,
                                  float dt, float kappa, float inv_dx2,
                                  float inv_dy2, int src_x, int src_y,
                                  float src_add, int do_src) {
-  const int i = (int)(blockIdx.x * blockDim.x + threadIdx.x);
-  const int j = (int)(blockIdx.y * blockDim.y + threadIdx.y);
+  const int tx = threadIdx.x;
+  const int ty = threadIdx.y;
+  const int i = blockIdx.x * blockDim.x + tx;
+  const int j = blockIdx.y * blockDim.y + ty;
 
   // Need a 4-cell border for radius-4 stencil
-  if (i < 4 || i >= nx - 4 || j < 4 || j >= ny - 4)
+  if (i < RADIUS || i >= nx - RADIUS || j < RADIUS || j >= ny - RADIUS)
     return;
 
   __shared__ float s_u[(BLOCK_HALO_X) * (BLOCK_HALO_Y)];
 
   const int idx = j * nx + i;
-  const int s_idx = (threadIdx.y + 4) * (BLOCK_HALO_X) + (threadIdx.x + 4);
+  const int s_idx = (ty + RADIUS) * BLOCK_HALO_X + (tx + RADIUS);
 
   s_u[s_idx] = u[idx];
-  if (threadIdx.y == 0) {
-    s_u[s_idx - 4] = u[idx - 4];
-    s_u[s_idx - 3] = u[idx - 3];
-    s_u[s_idx - 2] = u[idx - 2];
-    s_u[s_idx - 1] = u[idx - 1];
-  }
-  if (threadIdx.x == 0) {
+
+if (ty == 0) {
     s_u[s_idx - 4 * BLOCK_HALO_X] = u[idx - 4 * nx];
     s_u[s_idx - 3 * BLOCK_HALO_X] = u[idx - 3 * nx];
     s_u[s_idx - 2 * BLOCK_HALO_X] = u[idx - 2 * nx];
     s_u[s_idx - 1 * BLOCK_HALO_X] = u[idx - 1 * nx];
   }
-  if (threadIdx.y == BLOCK_Y) {
-    s_u[s_idx + 4] = u[idx + 4];
-    s_u[s_idx + 3] = u[idx + 3];
-    s_u[s_idx + 2] = u[idx + 2];
-    s_u[s_idx + 1] = u[idx + 1];
+  if (tx == 0) {
+    s_u[s_idx - 4] = u[idx - 4];
+    s_u[s_idx - 3] = u[idx - 3];
+    s_u[s_idx - 2] = u[idx - 2];
+    s_u[s_idx - 1] = u[idx - 1];
   }
-  if (threadIdx.x == BLOCK_X) {
-    s_u[s_idx + 4 * BLOCK_HALO_X] = u[idx + 4 * nx];
-    s_u[s_idx + 3 * BLOCK_HALO_X] = u[idx + 3 * nx];
-    s_u[s_idx + 2 * BLOCK_HALO_X] = u[idx + 2 * nx];
+  if (ty == (BLOCK_Y - 1)) { // fixed
     s_u[s_idx + 1 * BLOCK_HALO_X] = u[idx + 1 * nx];
+    s_u[s_idx + 2 * BLOCK_HALO_X] = u[idx + 2 * nx];
+    s_u[s_idx + 3 * BLOCK_HALO_X] = u[idx + 3 * nx];
+    s_u[s_idx + 4 * BLOCK_HALO_X] = u[idx + 4 * nx];
+  }
+  if (tx == (BLOCK_X - 1)) { // fixed
+    s_u[s_idx + 1] = u[idx + 1];
+    s_u[s_idx + 2] = u[idx + 2];
+    s_u[s_idx + 3] = u[idx + 3];
+    s_u[s_idx + 4] = u[idx + 4];
   }
 
   __syncthreads();
@@ -414,7 +419,7 @@ int main(int argc, char **argv) {
           src_add, do_src);
       break;
     case 1:
-      // XXX DOESNT WORK
+      // fixed
       step_kernel_smem<<<grid, {BLOCK_X, BLOCK_Y}>>>(
           d_u1, d_u0, nx, ny, a.dt, a.kappa, inv_dx2, inv_dy2, a.src_x, a.src_y,
           src_add, do_src);
